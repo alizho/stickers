@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>alicia's stickers</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="title">alicia's stickers</div>
+  <div id="viewport">
+    <div id="canvas"></div>
+  </div>
+  <div class="toolbar">
+    <div class="color-picker" id="colorPicker">
+      <div class="color-options">
+        <button class="color-swatch swatch-pink" data-theme="pink"></button>
+        <button class="color-swatch swatch-blue" data-theme="blue"></button>
+        <button class="color-swatch swatch-light" data-theme="light"></button>
+        <button class="color-swatch swatch-dark active" data-theme="dark"></button>
+      </div>
+      <button class="color-trigger" id="colorTrigger"></button>
+    </div>
+    <button class="grid-toggle active" id="gridToggle">grid</button>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
