@@ -49,8 +49,25 @@ function initCardHover(stickerEl) {
   let isHovering = false;
   let isEntering = false;
 
+  function enterHover() {
+    isHovering = true;
+    isEntering = true;
+    image.style.transition = 'transform 0.05s cubic-bezier(0.4, 0, 0.2, 1)';
+    overlay.style.transition = 'opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s cubic-bezier(0.4, 0, 0.2, 1)';
+    noiseOverlay.style.transition = 'opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1)';
+    noiseOverlay.style.opacity = '1';
+    setTimeout(() => {
+      isEntering = false;
+      if (isHovering) {
+        image.style.transition = 'none';
+        overlay.style.transition = 'none';
+        noiseOverlay.style.transition = 'none';
+      }
+    }, 150);
+  }
+
   container.addEventListener('mousemove', (e) => {
-    if (!isHovering) return;
+    if (!isHovering) enterHover();
     if (!isEntering) {
       image.style.transition = 'none';
       overlay.style.transition = 'none';
@@ -104,20 +121,7 @@ function initCardHover(stickerEl) {
   });
 
   container.addEventListener('mouseenter', () => {
-    isHovering = true;
-    isEntering = true;
-    image.style.transition = 'transform 0.05s cubic-bezier(0.4, 0, 0.2, 1)';
-    overlay.style.transition = 'opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1), transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), background 0.15s cubic-bezier(0.4, 0, 0.2, 1)';
-    noiseOverlay.style.transition = 'opacity 0.15s cubic-bezier(0.4, 0, 0.2, 1)';
-    noiseOverlay.style.opacity = '1';
-    setTimeout(() => {
-      isEntering = false;
-      if (isHovering) {
-        image.style.transition = 'none';
-        overlay.style.transition = 'none';
-        noiseOverlay.style.transition = 'none';
-      }
-    }, 150);
+    if (!isHovering) enterHover();
   });
 
   container.addEventListener('mouseleave', () => {
@@ -191,13 +195,58 @@ async function init() {
     setTimeout(() => el.classList.add('visible'), 100 + i * 80);
   });
 
-  // Sticker dragging
+  const lightbox = document.getElementById('lightbox');
+  const lightboxSticker = document.getElementById('lightboxSticker');
+  const lightboxCaption = document.getElementById('lightboxCaption');
+  let lightboxOpen = false;
+
+  function openLightbox(sticker) {
+    const img = sticker.querySelector('.card-hover-image');
+    if (!img) return;
+
+    lightboxSticker.innerHTML = `
+      <div class="card-hover-container">
+        <div class="card-hover-wrapper">
+          <img src="${img.src}" alt="sticker" class="card-hover-image" draggable="false" />
+          <div class="card-light-overlay"></div>
+        </div>
+      </div>`;
+
+    const filename = img.src.split('/').pop().replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    lightboxCaption.textContent = filename;
+    lightboxOpen = true;
+    lightbox.classList.add('active');
+
+    setTimeout(() => {
+      if (lightboxOpen) initCardHover(lightboxSticker);
+    }, 400);
+  }
+
+  function closeLightbox() {
+    if (!lightboxOpen) return;
+    lightboxOpen = false;
+    lightbox.classList.remove('active');
+  }
+
+  lightbox.addEventListener('click', (e) => {
+    if (e.target.closest('.lightbox-sticker')) return;
+    closeLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeLightbox();
+  });
+
+  // sticker dragging + click detection
+  const CLICK_THRESHOLD = 4;
+
   stickerEls.forEach((sticker) => {
     let isDragging = false;
     let posX = 0, posY = 0;
     let velX = 0, velY = 0;
     let lastX = 0, lastY = 0, lastTime = 0;
     let rafId = null;
+    let startX = 0, startY = 0;
+    let totalDist = 0;
     const rotation = parseFloat(sticker.dataset.rotation || '0');
 
     function setTransform() {
@@ -209,9 +258,12 @@ async function init() {
       e.stopPropagation();
       isDragging = true;
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      startX = e.clientX;
+      startY = e.clientY;
       lastX = e.clientX;
       lastY = e.clientY;
       lastTime = performance.now();
+      totalDist = 0;
       velX = 0;
       velY = 0;
       sticker.classList.add('dragging');
@@ -224,6 +276,7 @@ async function init() {
       const dt = Math.max(now - lastTime, 1);
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
+      totalDist += Math.abs(dx) + Math.abs(dy);
       const alpha = 0.4;
       velX = alpha * ((dx / dt) * 16) + (1 - alpha) * velX;
       velY = alpha * ((dy / dt) * 16) + (1 - alpha) * velY;
@@ -241,6 +294,11 @@ async function init() {
       if (!isDragging) return;
       isDragging = false;
       sticker.classList.remove('dragging');
+
+      if (totalDist < CLICK_THRESHOLD) {
+        openLightbox(sticker);
+        return;
+      }
 
       const friction = 0.97;
       function decelerate() {
@@ -264,6 +322,9 @@ async function init() {
 
   let isPanning = false;
   let panStartX = 0, panStartY = 0;
+  let panVelX = 0, panVelY = 0;
+  let panLastX = 0, panLastY = 0, panLastTime = 0;
+  let panRafId = null;
 
   function applyPan() {
     canvas.style.transform = `translate(${panX}px, ${panY}px)`;
@@ -273,26 +334,61 @@ async function init() {
   viewport.addEventListener('mousedown', (e) => {
     if (e.target.closest('.sticker')) return;
     isPanning = true;
+    if (panRafId !== null) { cancelAnimationFrame(panRafId); panRafId = null; }
     panStartX = e.clientX - panX;
     panStartY = e.clientY - panY;
+    panLastX = e.clientX;
+    panLastY = e.clientY;
+    panLastTime = performance.now();
+    panVelX = 0;
+    panVelY = 0;
     viewport.classList.add('panning');
   });
 
   document.addEventListener('mousemove', (e) => {
     if (!isPanning) return;
+    const now = performance.now();
+    const dt = Math.max(now - panLastTime, 1);
+    const dx = e.clientX - panLastX;
+    const dy = e.clientY - panLastY;
+    const alpha = 0.3;
+    panVelX = alpha * ((dx / dt) * 16) + (1 - alpha) * panVelX;
+    panVelY = alpha * ((dy / dt) * 16) + (1 - alpha) * panVelY;
     panX = e.clientX - panStartX;
     panY = e.clientY - panStartY;
     applyPan();
+    panLastX = e.clientX;
+    panLastY = e.clientY;
+    panLastTime = now;
   });
 
   document.addEventListener('mouseup', () => {
     if (!isPanning) return;
     isPanning = false;
     viewport.classList.remove('panning');
+
+    const friction = 0.95;
+    function decelerate() {
+      panVelX *= friction;
+      panVelY *= friction;
+      panX += panVelX;
+      panY += panVelY;
+      applyPan();
+      if (Math.abs(panVelX) > 0.1 || Math.abs(panVelY) > 0.1) {
+        panRafId = requestAnimationFrame(decelerate);
+      } else {
+        panRafId = null;
+      }
+    }
+
+    if (Math.abs(panVelX) > 0.5 || Math.abs(panVelY) > 0.5) {
+      decelerate();
+    }
   });
 
   viewport.addEventListener('wheel', (e) => {
     e.preventDefault();
+    if (panRafId !== null) { cancelAnimationFrame(panRafId); panRafId = null; }
     panX -= e.deltaX;
     panY -= e.deltaY;
     applyPan();

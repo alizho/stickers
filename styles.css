@@ -9,8 +9,8 @@
 :root {
   --theme-dark-bg: #000000;
   --theme-dark-dots: #303030;
-  --theme-light-bg: #eeeeee;
-  --theme-light-dots: #c7cad0;
+  --theme-light-bg: #ffffff;
+  --theme-light-dots: #bec1c7;
   --theme-blue-bg: #0067ff;
   --theme-blue-dots: #569aff;
   --theme-pink-bg: #f699c8;
@@ -23,6 +23,11 @@ body {
   height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+@font-face {
+  font-family: 'GeistPixel';
+  src: url('public/GeistPixel-Square.woff2') format('woff2');
 }
 
 #viewport {
@@ -76,6 +81,7 @@ body {
 }
 
 .title {
+  font-family: 'GeistPixel';
   position: fixed;
   top: 40px;
   left: 50%;
@@ -248,6 +254,7 @@ body {
   color: rgba(255, 255, 255, 0.5);
   font-family: inherit;
   font-size: 0.7rem;
+  font-family: 'GeistPixel';
   font-weight: 500;
   letter-spacing: 0.05em;
   padding: 5px 10px;
@@ -265,4 +272,71 @@ body {
 .grid-toggle.active {
   color: rgba(255, 255, 255, 0.7);
   border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Lightbox */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+}
+
+.lightbox-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.lightbox-sticker {
+  filter: drop-shadow(0px 20px 40px rgba(0, 0, 0, 0.4));
+  transform: scale(0.6) translateY(20px);
+  opacity: 0;
+  transition:
+    transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.3s ease;
+  pointer-events: none;
+  cursor: default;
+}
+
+.lightbox-overlay.active .lightbox-sticker {
+  pointer-events: auto;
+}
+
+.lightbox-sticker .card-hover-image {
+  max-width: 60vw;
+  max-height: 60vh;
+  object-fit: contain;
+}
+
+.lightbox-overlay.active .lightbox-sticker {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+}
+
+.lightbox-caption {
+  margin-top: 20px;
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: 0.04em;
+  opacity: 0;
+  transform: translateY(8px);
+  transition:
+    opacity 0.3s ease 0.1s,
+    transform 0.3s ease 0.1s;
+}
+
+.lightbox-overlay.active .lightbox-caption {
+  opacity: 1;
+  transform: translateY(0);
 }
