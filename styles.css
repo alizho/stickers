@@ -9,12 +9,17 @@
 :root {
   --theme-dark-bg: #000000;
   --theme-dark-dots: #303030;
+  --theme-dark-text: #72777a;
   --theme-light-bg: #ffffff;
   --theme-light-dots: #bec1c7;
+  --theme-light-text: #4f5b66;
   --theme-blue-bg: #0067ff;
   --theme-blue-dots: #569aff;
+  --theme-blue-text: #d9e8ff;
   --theme-pink-bg: #f699c8;
   --theme-pink-dots: #fdbede;
+  --theme-pink-text: #ffffff;
+  --ui-text: var(--theme-dark-text);
 }
 
 body {
@@ -37,7 +42,7 @@ body {
   overflow: hidden;
   cursor: grab;
   background-color: var(--theme-bg);
-  background-image: radial-gradient(circle, var(--theme-dots) 1px, transparent 1px);
+  background-image: radial-gradient(circle, var(--theme-dots) 1.5px, transparent 1.5px);
   background-size: 24px 24px;
   transition: background-color 0.4s ease;
 }
@@ -80,6 +85,25 @@ body {
   will-change: transform;
 }
 
+#particleLayer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 950;
+  overflow: hidden;
+}
+
+.particle-sprite {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
 .title {
   font-family: 'GeistPixel';
   position: fixed;
@@ -88,7 +112,7 @@ body {
   transform: translateX(-50%);
   font-size: 1.25rem;
   font-weight: 500;
-  color: #72777a;
+  color: var(--ui-text);
   letter-spacing: 0.05em;
   user-select: none;
   pointer-events: none;
@@ -229,7 +253,7 @@ body {
 }
 
 .color-swatch.active {
-  border-color: rgba(255, 255, 255, 0.7);
+  border-color: rgba(255, 255, 255, 1.0);
 }
 
 .swatch-dark {
@@ -250,8 +274,8 @@ body {
 
 .grid-toggle {
   background: none;
-  border: 2px solid rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.5);
+  border: 2px solid color-mix(in srgb, var(--ui-text) 35%, transparent);
+  color: color-mix(in srgb, var(--ui-text) 70%, transparent);
   font-family: inherit;
   font-size: 0.7rem;
   font-family: 'GeistPixel';
@@ -265,13 +289,13 @@ body {
 }
 
 .grid-toggle:hover {
-  color: rgba(255, 255, 255, 0.8);
-  border-color: rgba(255, 255, 255, 0.35);
+  color: color-mix(in srgb, var(--ui-text) 90%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text) 55%, transparent);
 }
 
 .grid-toggle.active {
-  color: rgba(255, 255, 255, 0.7);
-  border-color: rgba(255, 255, 255, 0.5);
+  color: color-mix(in srgb, var(--ui-text) 82%, transparent);
+  border-color: color-mix(in srgb, var(--ui-text) 70%, transparent);
 }
 
 /* Lightbox */

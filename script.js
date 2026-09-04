@@ -144,7 +144,6 @@ function createStickerElement(src, x, y, rotation, width) {
   el.style.left = x + 'px';
   el.style.top = y + 'px';
   el.dataset.rotation = String(rotation);
-  el.style.transform = `rotate(${rotation}deg)`;
   el.innerHTML = `
     <div class="card-hover-container">
       <div class="card-hover-wrapper">
@@ -153,6 +152,33 @@ function createStickerElement(src, x, y, rotation, width) {
       </div>
     </div>`;
   return el;
+}
+
+/** Move along a straight line from (fromX,fromY) to (toX,toY) with ease-out; no overshoot. */
+function easeOutTranslate2D(fromX, fromY, toX, toY, onUpdate, options = {}) {
+  function easeOutQuint(t) {
+    return 1 - (1 - t) ** 5;
+  }
+  const ease = options.ease ?? easeOutQuint;
+  const duration = options.duration ?? 2000;
+  const start = performance.now();
+
+  return new Promise((resolve) => {
+    function tick(now) {
+      const t = Math.min(1, (now - start) / duration);
+      const e = ease(t);
+      const x = fromX + (toX - fromX) * e;
+      const y = fromY + (toY - fromY) * e;
+      onUpdate(x, y);
+      if (t >= 1) {
+        onUpdate(toX, toY);
+        resolve();
+      } else {
+        requestAnimationFrame(tick);
+      }
+    }
+    requestAnimationFrame(tick);
+  });
 }
 
 let panX = 0, panY = 0;
@@ -188,11 +214,11 @@ async function init() {
     const rotation = (Math.random() - 0.5) * 40;
     const width = sizes[i % sizes.length];
     const el = createStickerElement(src, x, y, rotation, width);
+    el.style.transform = `translate(${cx - x}px, ${cy - y}px) rotate(${rotation}deg)`;
     canvas.appendChild(el);
     stickerEls.push(el);
 
     initCardHover(el);
-    setTimeout(() => el.classList.add('visible'), 100 + i * 80);
   });
 
   const lightbox = document.getElementById('lightbox');
@@ -213,7 +239,7 @@ async function init() {
       </div>`;
 
     const filename = img.src.split('/').pop().replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
-    lightboxCaption.textContent = filename;
+    lightboxCaption.textContent = '';
     lightboxOpen = true;
     lightbox.classList.add('active');
 
@@ -239,7 +265,7 @@ async function init() {
   // sticker dragging + click detection
   const CLICK_THRESHOLD = 4;
 
-  stickerEls.forEach((sticker) => {
+  stickerEls.forEach((sticker, i) => {
     let isDragging = false;
     let posX = 0, posY = 0;
     let velX = 0, velY = 0;
@@ -248,10 +274,32 @@ async function init() {
     let startX = 0, startY = 0;
     let totalDist = 0;
     const rotation = parseFloat(sticker.dataset.rotation || '0');
+    const baseX = parseFloat(sticker.style.left);
+    const baseY = parseFloat(sticker.style.top);
+    let introX = cx - baseX;
+    let introY = cy - baseY;
 
     function setTransform() {
-      sticker.style.transform = `translate(${posX}px, ${posY}px) rotate(${rotation}deg)`;
+      sticker.style.transform = `translate(${posX + introX}px, ${posY + introY}px) rotate(${rotation}deg)`;
     }
+
+    setTimeout(() => {
+      sticker.classList.add('visible');
+      const travel = Math.hypot(introX, introY);
+      const duration = Math.min(3600, 1200 + travel * 2.2);
+      easeOutTranslate2D(
+        introX,
+        introY,
+        0,
+        0,
+        (nx, ny) => {
+          introX = nx;
+          introY = ny;
+          setTransform();
+        },
+        { duration }
+      );
+    }, 120 + i * 100);
 
     sticker.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -396,6 +444,154 @@ async function init() {
 }
 
 init();
+initParticleTrail();
+
+function gridLineCells(x0, y0, x1, y1) {
+  const cells = [];
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    cells.push({ x, y });
+    if (x === x1 && y === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return cells;
+}
+
+const PARTICLE_FALLBACK = [
+  '/particles/p1.png',
+  '/particles/p2.png',
+  '/particles/p3.png',
+  '/particles/p4.png',
+];
+
+async function loadParticlePaths() {
+  try {
+    const res = await fetch('/api/particles');
+    if (!res.ok) return PARTICLE_FALLBACK;
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0 ? data : PARTICLE_FALLBACK;
+  } catch {
+    return PARTICLE_FALLBACK;
+  }
+}
+
+async function initParticleTrail() {
+  const viewport = document.getElementById('viewport');
+  if (!viewport) return;
+
+  const particlePaths = await loadParticlePaths();
+  PARTICLE_FALLBACK.forEach((src) => {
+    const img = new Image();
+    img.src = src;
+  });
+
+  const layer = document.createElement('div');
+  layer.id = 'particleLayer';
+  document.body.appendChild(layer);
+
+  const GRID = 24;
+  const SPAWN_CHANCE = 0.35; // lower = sparser trail
+  const LIFETIME_MIN = 280; // ms
+  const LIFETIME_MAX = 520; // ms
+  const CELL_JITTER = 0; // random offset within a cell (0–1 × grid)
+  const SIDE_CELL_CHANCE = 0.3; // chance to spawn in a neighboring grid cell
+  const OPACITY_MIN = 0.45;
+  const OPACITY_MAX = 1;
+  let lastCell = null;
+  let activeCount = 0;
+  const MAX_ACTIVE = 20;
+
+  function spawnAt(clientX, clientY) {
+    if (activeCount >= MAX_ACTIVE) return;
+    if (Math.random() > SPAWN_CHANCE) return;
+
+    const src = particlePaths[Math.floor(Math.random() * particlePaths.length)];
+    const el = document.createElement('img');
+    el.className = 'particle-sprite on';
+    el.src = src;
+    el.draggable = false;
+    el.style.left = `${clientX}px`;
+    el.style.top = `${clientY}px`;
+    el.style.opacity = String(OPACITY_MIN + Math.random() * (OPACITY_MAX - OPACITY_MIN));
+    layer.appendChild(el);
+
+    activeCount += 1;
+    const lifetime = LIFETIME_MIN + Math.random() * (LIFETIME_MAX - LIFETIME_MIN);
+    setTimeout(() => {
+      el.remove();
+      activeCount -= 1;
+    }, lifetime);
+  }
+
+  function pickSideCell(cellX, cellY, dirX, dirY) {
+    const options = [];
+    if (dirX === 0 && dirY === 0) {
+      options.push([1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]);
+    } else if (Math.abs(dirX) >= Math.abs(dirY)) {
+      options.push([0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]);
+    } else {
+      options.push([1, 0], [-1, 0], [1, 1], [1, -1], [-1, 1], [-1, -1]);
+    }
+    const [ox, oy] = options[Math.floor(Math.random() * options.length)];
+    return { x: cellX + ox, y: cellY + oy };
+  }
+
+  function visitCell(cellX, cellY, dirX = 0, dirY = 0) {
+    let gx = cellX;
+    let gy = cellY;
+    if (Math.random() < SIDE_CELL_CHANCE) {
+      const side = pickSideCell(cellX, cellY, dirX, dirY);
+      gx = side.x;
+      gy = side.y;
+    }
+    const jitter = GRID * CELL_JITTER;
+    const px = gx * GRID + GRID / 2 + (Math.random() - 0.5) * jitter;
+    const py = gy * GRID + GRID / 2 + (Math.random() - 0.5) * jitter;
+    spawnAt(px, py);
+  }
+
+  function onMouseMove(e) {
+    if (e.target.closest('.toolbar')) return;
+    const lightbox = document.getElementById('lightbox');
+    if (lightbox?.classList.contains('active') && e.target.closest('#lightbox')) return;
+
+    const cellX = Math.floor(e.clientX / GRID);
+    const cellY = Math.floor(e.clientY / GRID);
+
+    if (!lastCell) {
+      visitCell(cellX, cellY);
+      lastCell = { x: cellX, y: cellY };
+      return;
+    }
+
+    if (lastCell.x === cellX && lastCell.y === cellY) return;
+
+    const dirX = cellX - lastCell.x;
+    const dirY = cellY - lastCell.y;
+    const cells = gridLineCells(lastCell.x, lastCell.y, cellX, cellY);
+    cells.forEach((cell) => visitCell(cell.x, cell.y, dirX, dirY));
+    lastCell = { x: cellX, y: cellY };
+  }
+
+  document.addEventListener('mousemove', onMouseMove);
+  document.addEventListener('mouseleave', () => {
+    lastCell = null;
+  });
+}
 
 // spring animation utility with per-element cancellation
 const _springCleanup = new WeakMap();
@@ -486,10 +682,10 @@ function springAnimate(el, from, to, { stiffness = 0.12, damping = 0.72, delay =
   let isOpen = false;
 
   const themes = {
-    dark: { bgVar: '--theme-dark-bg', dotsVar: '--theme-dark-dots' },
-    light: { bgVar: '--theme-light-bg', dotsVar: '--theme-light-dots' },
-    blue: { bgVar: '--theme-blue-bg', dotsVar: '--theme-blue-dots' },
-    pink: { bgVar: '--theme-pink-bg', dotsVar: '--theme-pink-dots' },
+    dark: { bgVar: '--theme-dark-bg', dotsVar: '--theme-dark-dots', textVar: '--theme-dark-text' },
+    light: { bgVar: '--theme-light-bg', dotsVar: '--theme-light-dots', textVar: '--theme-light-text' },
+    blue: { bgVar: '--theme-blue-bg', dotsVar: '--theme-blue-dots', textVar: '--theme-blue-text' },
+    pink: { bgVar: '--theme-pink-bg', dotsVar: '--theme-pink-dots', textVar: '--theme-pink-text' },
   };
 
   function updateTrigger(themeName) {
@@ -497,6 +693,7 @@ function springAnimate(el, from, to, { stiffness = 0.12, damping = 0.72, delay =
     const rootStyles = getComputedStyle(document.documentElement);
     trigger.style.backgroundColor = rootStyles.getPropertyValue(t.bgVar).trim();
     trigger.style.borderColor = rootStyles.getPropertyValue(t.dotsVar).trim();
+    document.documentElement.style.setProperty('--ui-text', rootStyles.getPropertyValue(t.textVar).trim());
   }
 
   viewport.classList.add('theme-dark');
